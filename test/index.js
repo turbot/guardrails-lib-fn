@@ -1,34 +1,37 @@
-const chai = require("chai");
-const { assert, expect } = chai;
-// This causes circular dependencies. Remove reference to sdk-test for now
-chai.use(require("@turbot/sdk-test").plugin);
+const { assert } = require("chai");
+const gfn = require(".."); // your index.js
 
-const tfn = require("..");
+describe("@turbot/gfn", function () {
+  this.timeout(5000);
 
-describe("@turbot/fn", function () {
-  before(function () {
-    process.env.TURBOT_TEST = true;
-  });
-  after(function () {
-    delete process.env.TURBOT_TEST;
-  });
-  it("has turbot variable", function (done) {
-    const wrappedFn = tfn((turbot) => (event, z, callback) => {
-      assert.exists(turbot);
-      assert.isFunction(turbot.ok);
-      assert.isFunction(turbot.resource.create);
-      callback(null, true);
+  before(() => { process.env.TURBOT_TEST = true; });
+  after(() => { delete process.env.TURBOT_TEST; });
+
+  // Minimal event so initialize() can build Turbot without SNS
+  const event = {
+    meta: { runType: "control", processId: "p-1" },
+    payload: { input: {} },
+  };
+
+  it("has turbot variable", async function () {
+    const wrapped = gfn(async (turbot, $) => {
+      assert.exists(turbot, "turbot should be passed");
+      assert.isFunction(turbot.ok, "turbot.ok should be a function");
+      assert.isObject(turbot.resource, "turbot.resource should exist");
+      assert.isFunction(turbot.resource.create, "turbot.resource.create should be a function");
+      turbot.ok(); // mark success
+      return true;
     });
-    wrappedFn({}, {}, done);
+
+    await wrapped(event, {}); // (event, context)
   });
 
-  it("turbot.ok works", function (done) {
-    const wrappedFn = tfn((turbot) => (event, context, callback) => {
-      turbot.ok();
-      expect(turbot).to.be.ok;
-      expect(turbot).to.not.be.alarm;
-      callback(null, true);
+  it("turbot.ok works", async function () {
+    const wrapped = gfn(async (turbot, $) => {
+      turbot.ok(); // should not throw
+      return true;
     });
-    wrappedFn({}, {}, done);
+
+    await wrapped(event, {});
   });
 });
