@@ -827,9 +827,7 @@ class Run {
           });
         });
       } else {
-        await finalize(_event, _context, _init, err, null, () => {
-          console.error("Error in finalizing the container run due to error", { error: err });
-        });
+        await finalize(_event, _context, _init, err, null);
       }
 
       process.exit(0);
