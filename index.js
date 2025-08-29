@@ -318,7 +318,7 @@ const messageSender = async (message, opts, callback) => {
     TopicArn: snsArn,
   };
 
-  console.log("Publishing to SNS with params new", { params });
+  console.log("Publishing to SNS with params", { params });
 
   const paramToUse =
     _mode === "container"
