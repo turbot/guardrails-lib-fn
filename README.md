@@ -1,6 +1,6 @@
 # @turbot/guardrails-lib-fn
 
-A Wrapper for Guardrails control functions.
+A wrapper for Guardrails control functions.
 
 ## Install
 
