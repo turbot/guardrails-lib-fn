@@ -12,11 +12,8 @@ const streamBuffers = require("stream-buffers");
 const taws = require("@turbot/guardrails-aws-sdk-v3");
 const tmp = require("tmp");
 const url = require("url");
-const util = require("util");
 const MessageValidator = require("@turbot/sns-validator");
 const validator = new MessageValidator();
-const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
-const { KMSClient, DecryptCommand } = require("@aws-sdk/client-kms");
 
 const cachedCredentials = new Map();
 
@@ -337,7 +334,8 @@ const messageSender = async (message, opts, callback) => {
           retryStrategy: new taws.CustomDiscoveryRetryStrategy(4), // Assuming this is a custom function
         };
 
-  console.log("Publishing to SNS with paramToUse new", { paramToUse });
+  const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
+
   const sns = taws.connect(SNSClient, paramToUse);
 
   const command = new PublishCommand(params);
@@ -347,7 +345,6 @@ const messageSender = async (message, opts, callback) => {
     actionId: _.get(message, "meta.actionId"),
     controlId: _.get(message, "meta.controlId"),
     policyId: _.get(message, "meta.policyValueId", _.get(message, "meta.policyId")),
-    paramToUse,
   });
 
   try {
@@ -583,62 +580,58 @@ function gfn(asyncHandler) {
 
   // Return a function in Lambda signature format
   return async (event, context) => {
+    let init = null;
+    let finalResult = null;
+    let finalError = null;
+
     try {
       // Initialize the Turbot metadata and context, configuring the lambda function
       // for simpler writing and use by mods.
-      const init = await initialize(event, context);
-
+      init = await initialize(event, context);
       _event = event;
       _context = context;
       _init = init;
 
-      try {
-        // Run the handler function directly as async
-        let result = await asyncHandler(init.turbot, init.turbot.$);
-        let finalResult = result;
-        let finalError = null;
+      // Run the handler function directly as async
+      const result = await asyncHandler(init.turbot, init.turbot.$);
+      finalResult = result;
+      finalError = null;
 
-        if (result && result.fatal) {
-          if (_.get(init, "turbot")) {
-            init.turbot.log.error(
-              `Unexpected fatal error while executing Lambda/Container function. Container error is always fatal. Execution will be terminated immediately.`,
-              {
-                error: result,
-                mode: _mode,
-              },
-            );
-          }
-
-          // for a fatal error, set control state to error and return a null error
-          // so SNS will think the lambda execution is successful and will not retry
-          finalResult = init.turbot.error(result.message, { error: result });
-          finalError = null;
-        } else if (result && result.message) {
-          // If we receive error we want to add it to the turbot object.
+      if (result && result.fatal) {
+        if (_.get(init, "turbot")) {
           init.turbot.log.error(
-            `Unexpected non-fatal error while executing Lambda function. Lambda will be retried based on AWS Lambda retry policy`,
+            `Unexpected fatal error while executing Lambda/Container function. Container error is always fatal. Execution will be terminated immediately.`,
             {
               error: result,
               mode: _mode,
-            },
+            }
           );
-          finalError = result;
         }
-
-        await persistLargeCommands(init.turbot.cargoContainer, {
-          log: init.turbot.log,
-          s3PresignedUrl: init.turbot.meta.s3PresignedUrlLargeCommands,
-          processId: init.turbot.meta.processId,
-        });
-
-        // Finalize handling
-        await finalize(event, context, init, finalError, finalResult);
-      } catch (err) {
-        console.error("Caught exception while executing the handler", { error: err, event, context });
-        await finalize(event, context, init, err, null);
+        // for a fatal error, set control state to error and return a null error
+        // so SNS will think the lambda execution is successful and will not retry
+        finalResult = init.turbot.error(result.message, { error: result });
+        finalError = null;
+      } else if (result && result.message) {
+        // If we receive error we want to add it to the turbot object.
+        init.turbot.log.error(
+          `Unexpected non-fatal error while executing Lambda function. Lambda will be retried based on AWS Lambda retry policy`,
+          {
+            error: result,
+            mode: _mode,
+          }
+        );
+        finalError = result;
       }
+      await persistLargeCommands(init.turbot.cargoContainer, {
+        log: init.turbot.log,
+        s3PresignedUrl: init.turbot.meta.s3PresignedUrlLargeCommands,
+        processId: init.turbot.meta.processId,
+      });
+      // Finalize handling
+      await finalize(event, context, init, finalError, finalResult);
     } catch (err) {
-      throw err;
+      console.error("Caught exception while executing the handler", { error: err, event, context });
+      await finalize(event, context, init, err, null);
     }
   };
 }
@@ -692,6 +685,8 @@ const decryptContainerParameters = async ({ envelope }) => {
     EncryptionContext: { purpose: "turbot-control" },
   };
 
+  const { KMSClient, DecryptCommand } = require("@aws-sdk/client-kms");
+
   // Create a KMS client using AWS SDK v3
   const kms = taws.connect(KMSClient, params);
   const command = new DecryptCommand(params);
@@ -723,7 +718,7 @@ class Run {
 
     if (_.isEmpty(this._runnableParameters) || this._runnableParameters === "undefined") {
       log.error("No parameters supplied", this._runnableParameters);
-      throw new errors.badRequest("No parameters supplied", this._runnableParameters);
+      throw errors.badRequest("No parameters supplied", this._runnableParameters);
     }
   }
 
