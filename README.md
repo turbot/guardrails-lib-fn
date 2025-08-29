@@ -1,6 +1,6 @@
 # @turbot/guardrails-lib-fn
 
-Turbot wrapper for control functions.
+A Wrapper for Guardrails control functions.
 
 ## Install
 
@@ -21,5 +21,5 @@ be assigned to the handler entry point for the control.
 If `TURBOT_TEST` is truthy then the function will be run in test mode:
 
 - Input should be passed directly (no SNS message wrapper)
-- The callback results will be `{ turbot: {/*data*/}, result: {/*data*/} }`.
+- The function will return `{ result: {/*original result*/}, turbot: {/*process event data*/} }` where `turbot` contains the process event data from `turbot.sendFinal()`.
 - Commands will not be published to SNS.
