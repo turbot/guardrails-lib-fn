@@ -70,11 +70,10 @@ const setAWSEnvVars = ($) => {
     }
   }
 
-  let region = _.get(
-    $,
-    "item.turbot.custom.aws.regionName",
-    _.get($, "item.turbot.metadata.aws.regionName", _.get($, "item.metadata.aws.regionName"))
-  );
+  const region =
+    $.item?.turbot?.custom?.aws?.regionName ??
+    $.item?.turbot?.metadata?.aws?.regionName ??
+    $.item?.metadata?.aws?.regionName;
 
   if (!region) {
     // Guess from the partition which default region we should be, this crucial for
@@ -559,7 +558,6 @@ const finalize = async (event, context, init, err, result) => {
           console.error("Error in send function", { error: _err });
           reject(_err);
         } else {
-          console.info("Send operation completed successfully");
           resolve();
         }
       });
