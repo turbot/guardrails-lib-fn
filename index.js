@@ -70,11 +70,10 @@ const setAWSEnvVars = ($) => {
     }
   }
 
-  let region = _.get(
-    $,
-    "item.turbot.custom.aws.regionName",
-    _.get($, "item.turbot.metadata.aws.regionName", _.get($, "item.metadata.aws.regionName")),
-  );
+  const region =
+    $.item?.turbot?.custom?.aws?.regionName ??
+    $.item?.turbot?.metadata?.aws?.regionName ??
+    $.item?.metadata?.aws?.regionName;
 
   if (!region) {
     // Guess from the partition which default region we should be, this crucial for
@@ -180,8 +179,8 @@ const initialize = async (event, context) => {
             "Invalid input data while starting the lambda function. Message should be received via SNS",
             {
               error: e,
-            },
-          ),
+            }
+          )
         );
         return;
       }
@@ -473,7 +472,6 @@ const persistLargeCommands = async (cargoContainer, opts) => {
 };
 
 const finalize = async (event, context, init, err, result) => {
-
   if (_mode === "container") {
     delete process.env.AWS_ACCESS_KEY;
     delete process.env.AWS_ACCESS_KEY_ID;
@@ -567,7 +565,7 @@ const finalize = async (event, context, init, err, result) => {
     return null;
   } catch (_err) {
     console.error("Error in send function", { error: _err });
-    throw err;
+    throw _err;
   }
 };
 
@@ -597,41 +595,51 @@ function gfn(asyncHandler) {
       finalResult = result;
       finalError = null;
 
-      if (result && result.fatal) {
-        if (_.get(init, "turbot")) {
-          init.turbot.log.error(
-            `Unexpected fatal error while executing Lambda/Container function. Container error is always fatal. Execution will be terminated immediately.`,
-            {
-              error: result,
-              mode: _mode,
-            }
-          );
-        }
-        // for a fatal error, set control state to error and return a null error
-        // so SNS will think the lambda execution is successful and will not retry
-        finalResult = init.turbot.error(result.message, { error: result });
-        finalError = null;
-      } else if (result && result.message) {
-        // If we receive error we want to add it to the turbot object.
-        init.turbot.log.error(
-          `Unexpected non-fatal error while executing Lambda function. Lambda will be retried based on AWS Lambda retry policy`,
-          {
-            error: result,
-            mode: _mode,
-          }
-        );
-        finalError = result;
-      }
       await persistLargeCommands(init.turbot.cargoContainer, {
         log: init.turbot.log,
         s3PresignedUrl: init.turbot.meta.s3PresignedUrlLargeCommands,
         processId: init.turbot.meta.processId,
       });
+
       // Finalize handling
       await finalize(event, context, init, finalError, finalResult);
     } catch (err) {
-      console.error("Caught exception while executing the handler", { error: err, event, context });
-      await finalize(event, context, init, err, null);
+      if (init && init.turbot) {
+        if (err && err.fatal) {
+          init.turbot.log.error(
+            `Unexpected fatal error while executing Lambda/Container function. Container error is always fatal. Execution will be terminated immediately.`,
+            {
+              error: err,
+              mode: _mode,
+            }
+          );
+          // for a fatal error, set control state to error and return a null error
+          // so SNS will think the lambda execution is successful and will not retry
+          finalResult = init.turbot.error(err.message, { error: err });
+          finalError = null;
+        } else if (err && err.message) {
+          // If we receive error we want to add it to the turbot object.
+          init.turbot.log.error(
+            `Unexpected non-fatal error while executing Lambda function. Lambda will be retried based on AWS Lambda retry policy`,
+            {
+              error: err,
+              mode: _mode,
+            }
+          );
+          finalError = err;
+        } else {
+          console.error("Caught exception while executing the handler", { error: err, event, context });
+          finalError = err;
+        }
+      }
+
+      await persistLargeCommands(init.turbot.cargoContainer, {
+        log: init.turbot.log,
+        s3PresignedUrl: init.turbot.meta.s3PresignedUrlLargeCommands,
+        processId: init.turbot.meta.processId,
+      });
+
+      return await finalize(event, context, init, finalError, finalResult);
     }
   };
 }
@@ -748,7 +756,7 @@ class Run {
             `http://169.254.170.2${process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI}`,
             {
               responseType: "json",
-            },
+            }
           );
           containerMetadata = metadataResponse.body;
           _containerSnsParam = {
@@ -787,7 +795,7 @@ class Run {
 
       // Clean up environment variables for container
       log.debug(
-        "Deleting env variables: AWS_ACCESS_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_KEY, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_SECURITY_TOKEN",
+        "Deleting env variables: AWS_ACCESS_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_KEY, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_SECURITY_TOKEN"
       );
 
       delete process.env.AWS_ACCESS_KEY;
