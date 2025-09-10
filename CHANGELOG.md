@@ -2,7 +2,7 @@
 
 # Release History
 
-## 1.0.1 [TBD]
+## 1.0.1 [2025-09-10]
 
 Fixed: Controls now properly transition to error state when exceptions occur, allowing the system to handle failures gracefully. [#4](https://github.com/turbot/guardrails-lib-fn/issues/4)
 
