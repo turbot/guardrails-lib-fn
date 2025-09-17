@@ -551,21 +551,17 @@ const finalize = async (event, context, init, err, result) => {
     init.turbot.error("Error running container");
   }
 
-  try {
-    await new Promise((resolve, reject) => {
-      init.turbot.send((_err) => {
-        if (_err) {
-          console.error("Error in send function", { error: _err });
-          reject(_err);
-        } else {
-          resolve();
-        }
-      });
+  await new Promise((resolve) => {
+    init.turbot.send((_err) => {
+      if (_err) {
+        console.error("Error in send function", { error: _err });
+      }
+      resolve(); // never reject
     });
-    return null;
-  } catch (_err) {
-    console.error("Error in send function", { error: _err });
-    throw _err;
+  });
+
+  if (err) {
+    throw err;
   }
 };
 
