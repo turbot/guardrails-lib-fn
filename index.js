@@ -70,7 +70,7 @@ const setAWSEnvVars = ($) => {
     }
   }
 
-  const region =
+  let region =
     $.item?.turbot?.custom?.aws?.regionName ??
     $.item?.turbot?.metadata?.aws?.regionName ??
     $.item?.metadata?.aws?.regionName;
