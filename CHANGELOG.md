@@ -2,6 +2,10 @@
 
 # Release History
 
+## 1.0.4 [2025-12-04]
+
+Fixed: Control stuck on Running state for resource type targets account on gov and china cloud.
+
 ## 1.0.3 [2025-09-17]
 
 Fixed: Resolved an issue where controls encountering non-fatal errors were not retried and remained in the handling state indefinitely.
