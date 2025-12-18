@@ -2,6 +2,10 @@
 
 # Release History
 
+## 1.1.0 [2025-12-18]
+
+Updated: @turbot/sns-validator to 5.0.3. @turbot/sdk to 5.26.0.
+
 ## 1.0.4 [2025-12-11]
 
 Fixed: Control stuck on Running state for resource type targets account on gov and china cloud.
