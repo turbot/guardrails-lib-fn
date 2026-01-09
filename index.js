@@ -1,88 +1,15 @@
-const { get, isEmpty, defaultsDeep } = require("./utils");
+const get = require("lodash.get");
+const isEmpty = require("lodash.isempty");
+const defaultsDeep = require("lodash.defaultsdeep");
 const { Turbot } = require("@turbot/sdk");
 const errors = require("@turbot/errors");
 const fs = require("fs-extra");
-const http = require("http");
+const got = require("got");
 const https = require("https");
 const log = require("@turbot/log");
 const os = require("os");
 const path = require("path");
-const zlib = require("zlib");
 const streamBuffers = require("stream-buffers");
-
-/**
- * Native HTTP/HTTPS request helper to replace 'got' library.
- * Supports JSON responses, timeouts, and gzip decompression.
- */
-const httpRequest = (urlString, options = {}) => {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(urlString);
-    const isHttps = urlObj.protocol === "https:";
-    const client = isHttps ? https : http;
-
-    const reqOptions = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || (isHttps ? 443 : 80),
-      path: urlObj.pathname + urlObj.search,
-      method: "GET",
-      headers: {
-        "Accept-Encoding": "gzip, deflate",
-      },
-    };
-
-    const timeout = options.timeout?.request || options.timeout;
-    const req = client.request(reqOptions, (res) => {
-      let stream = res;
-
-      // Handle gzip/deflate decompression
-      const encoding = res.headers["content-encoding"];
-      if (encoding === "gzip") {
-        stream = res.pipe(zlib.createGunzip());
-      } else if (encoding === "deflate") {
-        stream = res.pipe(zlib.createInflate());
-      }
-
-      const chunks = [];
-      stream.on("data", (chunk) => chunks.push(chunk));
-      stream.on("end", () => {
-        const body = Buffer.concat(chunks).toString("utf8");
-        if (options.responseType === "json") {
-          try {
-            resolve({ body: JSON.parse(body), statusCode: res.statusCode });
-          } catch (e) {
-            reject(new Error(`Failed to parse JSON: ${e.message}`));
-          }
-        } else {
-          resolve({ body, statusCode: res.statusCode });
-        }
-      });
-      stream.on("error", reject);
-    });
-
-    req.on("error", reject);
-
-    if (timeout) {
-      req.setTimeout(timeout, () => {
-        req.destroy();
-        reject(new Error(`Request timeout after ${timeout}ms`));
-      });
-    }
-
-    req.end();
-  });
-};
-
-/**
- * Native HTTPS streaming download helper to replace 'got.stream'.
- */
-const httpsStream = (urlString) => {
-  const urlObj = new URL(urlString);
-  return https.get({
-    hostname: urlObj.hostname,
-    port: urlObj.port || 443,
-    path: urlObj.pathname + urlObj.search,
-  });
-};
 const taws = require("@turbot/guardrails-aws-sdk-v3");
 const tmp = require("tmp");
 const MessageValidator = require("@turbot/sns-validator");
@@ -316,7 +243,7 @@ const expandEventData = async (msgObj) => {
 
     // Download the large parameter zip file
     const file = fs.createWriteStream(largeParamFileName);
-    const downloadStream = httpsStream(largeParameterZipUrl);
+    const downloadStream = got.stream(largeParameterZipUrl);
 
     await new Promise((resolve, reject) => {
       downloadStream.on("error", (err) => {
@@ -802,8 +729,11 @@ class Run {
   async run() {
     try {
       // Retrieve the container run parameters
-      const response = await httpRequest(this._runnableParameters, {
-        timeout: { request: 10000 },
+      const response = await got(this._runnableParameters, {
+        timeout: {
+          request: 10000,
+        },
+        decompress: true,
         responseType: "json",
       });
       const rawLaunchParameters = response.body;
@@ -818,9 +748,11 @@ class Run {
       let containerMetadata;
       if (launchParameters.meta.launchType === "EC2") {
         try {
-          const metadataResponse = await httpRequest(
+          const metadataResponse = await got(
             `http://169.254.170.2${process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI}`,
-            { responseType: "json" }
+            {
+              responseType: "json",
+            }
           );
           containerMetadata = metadataResponse.body;
           _containerSnsParam = {
