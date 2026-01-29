@@ -485,15 +485,22 @@ const finalize = async (event, context, init, err, result) => {
   }
 
   if (!init || !init.turbot) {
-    // can't do anything here .. have to just silently return
+    // Can't do anything without a turbot object - return early to prevent crash loop.
+    // This can happen if an unhandled exception occurs outside of a Lambda invocation
+    // (e.g., during cold start or between invocations) when _init is undefined.
     console.error("Error reported but no turbot object, unable to send anything back", { error: err });
+    return;
   }
 
   // DO NOT log error here - we've persisted the large commands, let's avoid adding
   // any new information into the cargo
 
-  // Do not wait for empty callback look to terminate the process
-  context.callbackWaitsForEmptyEventLoop = false;
+  // Do not wait for empty callback loop to terminate the process.
+  // Guard against undefined context which can occur if finalize() is called from
+  // unhandledExceptionHandler before a Lambda invocation has set _context.
+  if (context) {
+    context.callbackWaitsForEmptyEventLoop = false;
+  }
 
   // If in test mode, then do not publish to SNS. Instead, morph the response to include
   // both the turbot information and the raw result so they can be used for assertions.
