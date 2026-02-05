@@ -1,17 +1,17 @@
-const _ = require("lodash");
+const get = require("lodash.get");
+const isEmpty = require("lodash.isempty");
+const defaultsDeep = require("lodash.defaultsdeep");
 const { Turbot } = require("@turbot/sdk");
 const errors = require("@turbot/errors");
 const fs = require("fs-extra");
+const got = require("got");
 const https = require("https");
 const log = require("@turbot/log");
 const os = require("os");
 const path = require("path");
-const got = require("got");
-const rimraf = require("rimraf");
 const streamBuffers = require("stream-buffers");
 const taws = require("@turbot/guardrails-aws-sdk-v3");
 const tmp = require("tmp");
-const url = require("url");
 const MessageValidator = require("@turbot/sns-validator");
 const validator = new MessageValidator();
 
@@ -40,11 +40,11 @@ const setAWSEnvVars = ($) => {
   // standard locations (best we can do without a lot of complexity). We
   // go from most rare find to least rare, which is most likely what the
   // developer will expect.
-  let credentials = _.get($, ["organization", "credentials"]);
+  let credentials = get($, ["organization", "credentials"]);
   if (!credentials) {
-    credentials = _.get($, ["organizationalUnit", "credentials"]);
+    credentials = get($, ["organizationalUnit", "credentials"]);
     if (!credentials) {
-      credentials = _.get($, ["account", "credentials"]);
+      credentials = get($, ["account", "credentials"]);
     }
   }
 
@@ -81,7 +81,7 @@ const setAWSEnvVars = ($) => {
     // without this "default region" setup the default region will be the current region where Lambda is executing.
     // it's fine when the accounts are in the partition (All in commercial, all in GovCloud) but it will
     // fail miserably if the target account is in GovCloud/China while Turbot Master is in Commercial
-    const defaultPartition = _.get($, "item.metadata.aws.partition", _.get($, "item.turbot.custom.aws.partition"));
+    const defaultPartition = get($, "item.metadata.aws.partition", get($, "item.turbot.custom.aws.partition"));
     if (defaultPartition === "aws-us-gov") {
       region = "us-gov-west-1";
     } else if (defaultPartition === "aws-cn") {
@@ -135,7 +135,7 @@ const initialize = async (event, context) => {
   // SNS. In this case we short cut all of the extraction of credentials etc,
   // and just run directly with the input passed in the event.
   if (process.env.TURBOT_TEST) {
-    turbotOpts.type = _.get(event, "meta.runType", process.env.TURBOT_FUNCTION_TYPE);
+    turbotOpts.type = get(event, "meta.runType", process.env.TURBOT_FUNCTION_TYPE);
 
     // In test mode there is no metadata (e.g. AWS credentials) for Turbot,
     // they are all inherited from the underlying development environment.
@@ -143,7 +143,7 @@ const initialize = async (event, context) => {
 
     // In test mode, the input is in the payload of the event (no SNS wrapper).
     // default to using event directly for backwards compatibility
-    turbot.$ = _.get(event, ["payload", "input"], event);
+    turbot.$ = get(event, ["payload", "input"], event);
 
     // set the AWS credentials and region env vars using the values passed in the control input
     setAWSEnvVars(turbot.$);
@@ -151,7 +151,7 @@ const initialize = async (event, context) => {
   }
 
   // SNS sends a single record at a time to Lambda.
-  const rawMessage = _.get(event, "Records[0].Sns.Message");
+  const rawMessage = get(event, "Records[0].Sns.Message");
   if (!rawMessage) {
     throw errors.badRequest("Turbot controls should be called via SNS, or with TURBOT_TEST set to true", {
       event,
@@ -186,13 +186,13 @@ const initialize = async (event, context) => {
       }
 
       log.info("Received message", {
-        resourceId: _.get(msgObj, "meta.resourceId"),
-        processId: _.get(msgObj, "meta.processId"),
-        actionId: _.get(msgObj, "meta.actionId"),
-        controlId: _.get(msgObj, "meta.controlId"),
-        policyId: _.get(msgObj, "meta.policyValueId", _.get(msgObj, "meta.policyId")),
-        tenant: _.get(msgObj, "meta.tenantId"),
-        turbotVersion: _.get(msgObj, "meta.turbotVersion"),
+        resourceId: get(msgObj, "meta.resourceId"),
+        processId: get(msgObj, "meta.processId"),
+        actionId: get(msgObj, "meta.actionId"),
+        controlId: get(msgObj, "meta.controlId"),
+        policyId: get(msgObj, "meta.policyValueId", get(msgObj, "meta.policyId")),
+        tenant: get(msgObj, "meta.tenantId"),
+        turbotVersion: get(msgObj, "meta.turbotVersion"),
       });
 
       try {
@@ -202,7 +202,7 @@ const initialize = async (event, context) => {
         turbotOpts.senderFunction = messageSender;
 
         // Prefer the runType specified in the meta (for backward compatibility with anything prior to beta 46)
-        turbotOpts.type = _.get(updatedMsgObj, "meta.runType", process.env.TURBOT_FUNCTION_TYPE);
+        turbotOpts.type = get(updatedMsgObj, "meta.runType", process.env.TURBOT_FUNCTION_TYPE);
         // if a function type was passed in the env vars use that
         if (!turbotOpts.type) {
           // otherwise default to control
@@ -225,7 +225,7 @@ const initialize = async (event, context) => {
 };
 
 const expandEventData = async (msgObj) => {
-  const payloadType = _.get(msgObj, "payload.type");
+  const payloadType = get(msgObj, "payload.type");
   if (payloadType !== "large_parameter") {
     return msgObj;
   }
@@ -278,16 +278,16 @@ const expandEventData = async (msgObj) => {
     const parsedData = await fs.readJson(path.resolve(tmpDir, "large-input.json"));
 
     // Clean up temp directory
-    rimraf.sync(tmpDir);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
 
     // Merge the parsed data with the message object
-    _.defaultsDeep(msgObj.payload, parsedData.payload);
+    defaultsDeep(msgObj.payload, parsedData.payload);
 
     return msgObj;
   } catch (error) {
     // Clean up temp directory on error
     if (tmpDir) {
-      rimraf.sync(tmpDir);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
     throw error;
   }
@@ -341,9 +341,9 @@ const messageSender = async (message, opts, callback) => {
 
   log.info("messageSender: publish to SNS", {
     snsArn,
-    actionId: _.get(message, "meta.actionId"),
-    controlId: _.get(message, "meta.controlId"),
-    policyId: _.get(message, "meta.policyValueId", _.get(message, "meta.policyId")),
+    actionId: get(message, "meta.actionId"),
+    controlId: get(message, "meta.controlId"),
+    policyId: get(message, "meta.policyValueId", get(message, "meta.policyId")),
   });
 
   try {
@@ -372,12 +372,12 @@ const persistLargeCommands = async (cargoContainer, opts) => {
     largeCommands = cargoContainer.largeCommands;
   }
 
-  if (_.isEmpty(largeCommands)) {
+  if (isEmpty(largeCommands)) {
     cargoContainer.largeCommandState = "finalised";
     return;
   }
 
-  const osTempDir = _.isEmpty(process.env.TURBOT_TMP_DIR) ? os.tmpdir() : process.env.TURBOT_TMP_DIR;
+  const osTempDir = isEmpty(process.env.TURBOT_TMP_DIR) ? os.tmpdir() : process.env.TURBOT_TMP_DIR;
   const tmpDir = `${osTempDir}/commands`;
 
   try {
@@ -422,11 +422,11 @@ const persistLargeCommands = async (cargoContainer, opts) => {
   const stream = fs.createReadStream(zipFilePath);
   const stat = await fs.stat(zipFilePath);
 
-  const urlOpts = url.parse(opts.s3PresignedUrl);
+  const urlOpts = new URL(opts.s3PresignedUrl);
   const reqOptions = {
     method: "PUT",
     host: urlOpts.host,
-    path: urlOpts.path,
+    path: urlOpts.pathname + urlOpts.search,
     headers: {
       "content-type": "application/zip",
       "content-length": stat.size,
@@ -464,7 +464,7 @@ const persistLargeCommands = async (cargoContainer, opts) => {
 
   // Clean up temp directory
   if (tmpDir) {
-    rimraf.sync(tmpDir);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
   log.info("Cargo state set to finalized no further data will be added.");
@@ -727,7 +727,7 @@ class Run {
 
     this._runnableParameters = process.env.TURBOT_CONTROL_CONTAINER_PARAMETERS;
 
-    if (_.isEmpty(this._runnableParameters) || this._runnableParameters === "undefined") {
+    if (isEmpty(this._runnableParameters) || this._runnableParameters === "undefined") {
       log.error("No parameters supplied", this._runnableParameters);
       throw errors.badRequest("No parameters supplied", this._runnableParameters);
     }
