@@ -605,7 +605,7 @@ function gfn(asyncHandler) {
       });
 
       // Finalize handling
-      await finalize(event, context, init, finalError, finalResult);
+      return await finalize(event, context, init, finalError, finalResult);
     } catch (err) {
       if (init && init.turbot) {
         if (err && err.fatal) {
